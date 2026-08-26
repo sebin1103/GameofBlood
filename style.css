@@ -87,6 +87,7 @@ body::after{content:"";position:fixed;inset:0;z-index:45;pointer-events:none;bac
  linear-gradient(to bottom,rgba(232,90,105,.30) 1px,transparent 1px),
  linear-gradient(to right,rgba(255,255,255,.055) 1px,transparent 1px),
  linear-gradient(to bottom,rgba(255,255,255,.055) 1px,transparent 1px);
+ background-size:calc(100% / 14) calc(100% / 14);
  border:2px solid rgba(200,16,46,.5);
  box-shadow:0 0 0 1px #000,0 24px 60px rgba(0,0,0,.85),inset 0 0 100px rgba(0,0,0,.9)}
 .cell-marker{border-color:rgba(236,229,223,.4);color:#cabfba}
@@ -129,19 +130,12 @@ body::after{content:"";position:fixed;inset:0;z-index:45;pointer-events:none;bac
 /* ===== 타이포 ===== */
 .fx-defs{position:absolute;width:0;height:0;overflow:hidden}
 body{font-family:"IBM Plex Sans KR","Noto Sans KR",sans-serif}
-.lobby-main h1,.modal h2,.setup-instruction h2,.privacy-card h2,.winner-modal h2,.header-title strong,.setting-top h2,.status-heading strong,.overview-team strong{font-family:"Gasoek One","Black Han Sans",sans-serif;font-weight:400}
+.lobby-main h1{font-family:"Gasoek One","Black Han Sans",sans-serif;font-weight:400}
 .lobby-main h1{letter-spacing:-.015em;line-height:1.02}
-.setup-instruction h2,.privacy-card h2{letter-spacing:-.01em;line-height:1.14}
-.modal h2,.winner-modal h2{letter-spacing:-.01em}
-.header-title strong,.setting-top h2,.status-heading strong,.overview-team strong{letter-spacing:.005em}
 .lobby-main h1{filter:url(#rough) drop-shadow(0 6px 18px rgba(0,0,0,.9))}
 .lobby-main h1 em{filter:drop-shadow(3px 4px 0 #2a040a)}
 
 /* 굵기 보강 — 웹폰트가 무엇으로 잡히든 두께가 붙도록 */
-.setup-instruction h2,.privacy-card h2,.winner-modal h2{-webkit-text-stroke:1.1px currentColor;paint-order:stroke fill}
-.modal h2,.setting-top h2,.header-title strong,.status-heading strong{-webkit-text-stroke:.55px currentColor;paint-order:stroke fill}
-.setup-instruction h2,.privacy-card h2{filter:url(#rough-soft)}
-.winner-modal h2{filter:url(#rough-soft)}
 
 /* 로비 중앙 정렬 */
 .lobby-main{text-align:center}
@@ -151,3 +145,25 @@ body{font-family:"IBM Plex Sans KR","Noto Sans KR",sans-serif}
 /* 한글 줄바꿈 — 단어 중간에서 끊기지 않게 */
 .lobby-main h1,.setup-instruction h2,.privacy-card h2,.modal h2,.intro,.guide-lead,.guide-section li,.guide-win,.privacy-card>p:not(.eyebrow),.timeout-modal>p:not(.eyebrow),.winner-modal>p:not(.eyebrow){word-break:keep-all;overflow-wrap:break-word}
 .privacy-card h2{font-size:clamp(29px,4.6vw,42px)}
+
+/* 관전(상대 턴) 표시 */
+.game-screen.watching .direction-pad button{opacity:.35}
+.watch-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--line);color:#c9bdb9;font:10px "DM Mono",monospace}
+/* 대기실 닉네임 */
+.nickname-row{display:grid;gap:6px;margin:0 0 14px;text-align:left}
+.nickname-row label{font:10px "DM Mono",monospace;letter-spacing:.08em;color:#a99c99}
+.nickname-row input{width:100%;border:1px solid rgba(200,16,46,.35);background:#140e10;color:#f1eae6;padding:11px;outline:0;font-size:13px}
+.nickname-row input:focus{border-color:var(--red)}
+.setup-note{margin:9px 0 0;color:#9b8f8c;font-size:11px;line-height:1.6}
+.slot-preview{padding:7px 9px;border:1px dashed rgba(200,16,46,.3);color:#8f8481;font:10px "DM Mono",monospace;letter-spacing:.06em}
+
+/* 직전에 움직인 자동차 표시 — 기존 .cone은 border-width에 %를 써서 렌더링되지 않았음 */
+.cone{position:absolute;left:50%;top:auto;bottom:calc(100% + 3px);transform:translateX(-50%);
+ width:clamp(11px,1.35vw,21px);height:clamp(13px,1.6vw,25px);
+ border:0;background:linear-gradient(180deg,#ffa243 0 42%,#fff2e2 42% 60%,#ef5f0b 60% 100%);
+ clip-path:polygon(50% 0,100% 100%,0 100%);
+ filter:drop-shadow(0 2px 4px rgba(0,0,0,.85));z-index:9;pointer-events:none;
+ animation:conePulse 1.7s ease-in-out infinite}
+@keyframes conePulse{0%,100%{transform:translateX(-50%) translateY(0);opacity:1}50%{transform:translateX(-50%) translateY(-2px);opacity:.72}}
+.tile.last-moved{z-index:8;outline:2px solid #ff8a1f;outline-offset:2px;box-shadow:0 0 20px rgba(255,124,22,.5),inset 0 2px 0 rgba(255,255,255,.45)}
+.timeout-board .cone{animation:none}

@@ -32,6 +32,7 @@ let neutralStarts = [
 const state = { size:2, teams:{red:{name:'레드 팀',players:['레드 1','레드 2']},yellow:{name:'옐로 팀',players:['옐로 1','옐로 2']}}, placement:{phase:1,opponentSlots:[],ownSlot:[]}, cars:[], activeTeam:'red', activePlayer:{red:0,yellow:0}, remaining:{red:[],yellow:[]}, turnsTaken:{red:[],yellow:[]}, score:{red:0,yellow:0}, lastMoved:null, selected:null, moves:0, timeouts:{red:true,yellow:true}, timeoutActive:null, completedOrder:[], winner:null, winReason:null, round:1, timer:null, turnStartedAt:0, gameOver:false, roomLobby:null };
 let dragState = null;
 let timeoutTicker = null;
+let spectatorTimer = null;
 const TIMEOUT_SECONDS = 60;
 let ignoreClickUntil = 0;
 const storedClientId=sessionStorage.getItem('hell-commute-client')||crypto.randomUUID();sessionStorage.setItem('hell-commute-client',storedClientId);
@@ -39,12 +40,14 @@ const network = { roomCode:null, isHost:false, identity:{team:'red',player:0}, c
 
 function setRoomStatus(text){ const label=$('#room-status'); if(label)label.textContent=text; }
 function isMyTurn(){ return !network.roomCode || (network.identity.team===state.activeTeam&&network.identity.player===state.activePlayer[state.activeTeam]); }
+function defaultName(team,index){ return `${team==='red'?'레드':'옐로'} ${index+1}`; }
+function playerName(team,index){ return state.roomLobby?.claims?.[`${team}-${index}`]?.name || state.teams[team].players[index] || defaultName(team,index); }
 function lobbySlots(){ return ['red','yellow'].flatMap((team)=>state.teams[team].players.map((name,index)=>({key:`${team}-${index}`,team,index,name}))); }
 function allSeatsFilled(){ return lobbySlots().every((slot)=>state.roomLobby?.claims?.[slot.key]); }
 function renderRoomLobby(){
   if(!network.roomCode||!state.roomLobby)return; $('#waiting-room-code').textContent=network.roomCode;
   const mineSlot=Object.entries(state.roomLobby.claims).find(([,claim])=>claim?.clientId===network.clientId)?.[0];
-  $('#seat-list').innerHTML=['red','yellow'].map((team)=>`<section class="seat-team ${team==='red'?'red-seat-team':'yellow-seat-team'}"><strong>${state.teams[team].name}</strong>${state.teams[team].players.map((name,index)=>{const key=`${team}-${index}`,claim=state.roomLobby.claims[key],mine=claim?.clientId===network.clientId,disabled=(claim&&!mine)||(mineSlot&&!mine);return `<button class="seat-button ${claim?'taken':''} ${mine?'mine':''} ${!claim?'available':''}" data-seat="${key}" ${disabled?'disabled':''}><b>PLAYER ${index+1}</b><span>${claim?mine?'내 자리':'참가 완료':'플레이어 '+(index+1)+'로 참가'}</span></button>`;}).join('')}</section>`).join('');
+  $('#seat-list').innerHTML=['red','yellow'].map((team)=>`<section class="seat-team ${team==='red'?'red-seat-team':'yellow-seat-team'}"><strong>${state.teams[team].name}</strong>${state.teams[team].players.map((name,index)=>{const key=`${team}-${index}`,claim=state.roomLobby.claims[key],mine=claim?.clientId===network.clientId,disabled=(claim&&!mine)||(mineSlot&&!mine);return `<button class="seat-button ${claim?'taken':''} ${mine?'mine':''} ${!claim?'available':''}" data-seat="${key}" ${disabled?'disabled':''}><b>PLAYER ${index+1}</b><span>${claim?(mine?`${claim.name} · 내 자리`:claim.name):'빈 자리 · 여기로 참가'}</span></button>`;}).join('')}</section>`).join('');
   $$('.seat-button[data-seat]').forEach((button)=>button.addEventListener('click',()=>claimSeat(button.dataset.seat)));
   const ready=allSeatsFilled(); const start=$('#start-online-game'); start.disabled=!network.isHost||!ready; start.textContent=ready?(network.isHost?'게임 준비 시작 →':'방장이 게임을 시작합니다'):'모두 입장하면 게임 준비 시작 →';
   $('#seat-help').textContent=ready?'모든 플레이어가 입장했습니다.':mineSlot?'참가한 좌석이 내 조작 권한입니다. 다른 좌석은 선택할 수 없습니다.':'빈 좌석을 선택하면 해당 플레이어의 조작 권한을 받습니다.';
@@ -58,7 +61,9 @@ function showSetupWaiting(){
 }
 async function claimSeat(slot){
   if(!network.roomCode||!state.roomLobby||state.roomLobby.started)return; const detail=lobbySlots().find((item)=>item.key===slot);
-  const response=await fetch(`/api/rooms/${network.roomCode}/claim`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slot,clientId:network.clientId,name:detail.name})});
+  const typed=($('#nickname-input')?.value||'').trim().slice(0,12);
+  if(!typed){ $('#seat-help').textContent='먼저 닉네임을 입력한 뒤 자리를 선택하세요.'; $('#nickname-input')?.focus(); return; }
+  const response=await fetch(`/api/rooms/${network.roomCode}/claim`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slot,clientId:network.clientId,name:typed})});
   if(!response.ok){$('#seat-help').textContent='이미 다른 플레이어가 참가한 자리입니다.';return;}
   const result=await response.json(); network.identity={team:detail.team,player:detail.index}; network.lastUpdated=result.updatedAt; applyGame(result.state); renderRoomLobby();
 }
@@ -67,7 +72,7 @@ function applyGame(payload){
   if(!payload?.state)return; const incoming=payload.state;
   if(incoming.roomLobby?.claims){ const mine=Object.entries(incoming.roomLobby.claims).find(([,claim])=>claim?.clientId===network.clientId); if(mine){ const [team,index]=mine[0].split('-'); network.identity={team,player:Number(index)}; } }
   const iAmActive=network.roomCode&&network.identity.team===incoming.activeTeam&&network.identity.player===incoming.activePlayer?.[incoming.activeTeam];
-  if(iAmActive&&state.turnStartedAt&&$('#game-screen').classList.contains('active')&&!incoming.timeoutActive&&!incoming.gameOver)return;
+  if(iAmActive&&state.timer&&state.turnStartedAt&&$('#game-screen').classList.contains('active')&&!incoming.timeoutActive&&!incoming.gameOver)return;
   clearInterval(state.timer); Object.assign(state,incoming,{timer:null});
   startSlots=payload.layout.startSlots; structures=payload.layout.structures; neutralStarts=payload.layout.neutralStarts;
   network.applying=true; routeScreens(); network.applying=false;
@@ -80,7 +85,25 @@ function routeScreens(){
   closeModal($('#winner-modal'));
   if(state.timeoutActive){ renderTimeoutView(); return; }
   clearInterval(timeoutTicker); closeModal($('#timeout-modal'));
+  if(isBoardWatcher()){ showSpectator(); return; }
   showHandoff();
+}
+function isBoardWatcher(){
+  if(!network.roomCode||state.gameOver||state.timeoutActive||!state.cars.length)return false;
+  const opponent=otherTeam(state.activeTeam);
+  return network.identity.team===opponent&&network.identity.player===state.activePlayer[opponent];
+}
+function showSpectator(){
+  clearInterval(state.timer); state.timer=null; state.selected=null;
+  showScreen('game-screen'); $('#game-screen').classList.add('watching'); renderGame();
+  $('#selected-car-text').textContent='상대 플레이어의 턴 — 관전 중';
+  $('#move-notice').textContent=state.lastMoved?'직전에 움직인 자동차에 고깔이 표시됩니다.':'아직 움직인 자동차가 없습니다.';
+  clearInterval(spectatorTimer);
+  spectatorTimer=setInterval(()=>{
+    if(!isBoardWatcher()){ clearInterval(spectatorTimer); return; }
+    const team=state.activeTeam,index=state.activePlayer[team];
+    updateTimerUI(state.turnStartedAt?state.remaining[team][index]-(Date.now()-state.turnStartedAt)/1000:state.remaining[team][index]);
+  },250);
 }
 function publishGame(){
   if(!network.roomCode||network.applying)return Promise.resolve();
@@ -145,7 +168,8 @@ function generateNeutralStarts(){
 }
 function generateNewBoard(){ startSlots=generateTeamSlots(); structures=generateStructures(); neutralStarts=generateNeutralStarts(); }
 
-function renderNameFields(){ ['red','yellow'].forEach((team)=>{ $(`#${team}-name-fields`).innerHTML=Array.from({length:state.size},(_,i)=>`<input maxlength="12" value="${state.teams[team].players[i]||`${team==='red'?'레드':'옐로'} ${i+1}`}" aria-label="${team} 팀 플레이어 ${i+1}" />`).join(''); }); }
+function syncPlayerSlots(){ ['red','yellow'].forEach((team)=>{ state.teams[team].players=Array.from({length:state.size},(_,i)=>defaultName(team,i)); }); }
+function renderNameFields(){ ['red','yellow'].forEach((team)=>{ $(`#${team}-name-fields`).innerHTML=Array.from({length:state.size},(_,i)=>`<div class="slot-preview">PLAYER ${i+1}</div>`).join(''); }); }
 function renderLobby(){ $('#match-label').textContent=`${state.size} : ${state.size} 팀전`; $('#lobby-red-name').textContent=state.teams.red.name; $('#lobby-yellow-name').textContent=state.teams.yellow.name; $('#red-count').textContent=`${state.size}명`; $('#yellow-count').textContent=`${state.size}명`; }
 function renderStaticStructures(root){ structures.forEach((p)=>root.insertAdjacentHTML('beforeend',`<i class="structure" style="${cellStyle(p)}"></i>`)); }
 
@@ -190,12 +214,12 @@ function renderCars(root,interactive=false){
   });
 }
 function renderBoard(root,interactive=false){ root.innerHTML=''; renderStaticStructures(root); renderCars(root,interactive); }
-function renderRoster(team){ const index=state.activePlayer[team]; $(`#${team}-roster`).innerHTML=state.teams[team].players.map((name,i)=>`<div class="roster-player ${state.activeTeam===team&&index===i?`active-${team}`:''}"><b>${String(i+1).padStart(2,'0')}</b><span>${name}</span><i>${state.remaining[team]?timeText(state.remaining[team][i]):'01:00'}</i></div>`).join(''); }
+function renderRoster(team){ const index=state.activePlayer[team]; $(`#${team}-roster`).innerHTML=Array.from({length:state.size},(_,i)=>playerName(team,i)).map((name,i)=>`<div class="roster-player ${state.activeTeam===team&&index===i?`active-${team}`:''}"><b>${String(i+1).padStart(2,'0')}</b><span>${name}</span><i>${state.remaining[team]?timeText(state.remaining[team][i]):'01:00'}</i></div>`).join(''); }
 function renderScore(team){ $(`#${team}-score`).textContent=`${state.score[team]} / 3`; $(`#${team}-escaped`).innerHTML=Array.from({length:3},(_,i)=>`<i class="${i<state.score[team]?'on':''}"></i>`).join(''); }
 function renderGame(){
-  $('#red-team-title').textContent=state.teams.red.name; $('#yellow-team-title').textContent=state.teams.yellow.name; const team=state.teams[state.activeTeam],player=team.players[state.activePlayer[state.activeTeam]];
+  $('#red-team-title').textContent=state.teams.red.name; $('#yellow-team-title').textContent=state.teams.yellow.name; const team=state.teams[state.activeTeam],player=playerName(state.activeTeam,state.activePlayer[state.activeTeam]);
   $('#active-team-name').textContent=team.name; $('#active-team-name').style.color=colorFor(state.activeTeam); $('#active-player-name').textContent=player; $('#active-turn-badge i').style.background=colorFor(state.activeTeam); $('#active-turn-badge i').style.boxShadow=`0 0 10px ${colorFor(state.activeTeam)}`;
-  renderRoster('red');renderRoster('yellow');renderScore('red');renderScore('yellow');renderBoard($('#game-board'),true); $('#selected-car-text').textContent=state.selected?`${state.cars.find((c)=>c.id===state.selected).label} 자동차 선택됨 · 방향을 고르세요`:'움직일 자동차를 선택하세요'; $('#last-move').textContent=`직전 이동 차량: ${state.lastMoved?(state.cars.find((c)=>c.id===state.lastMoved)?.label||'탈출 차량'):'없음'}`;
+  renderRoster('red');renderRoster('yellow');renderScore('red');renderScore('yellow');renderBoard($('#game-board'),isMyTurn()&&!state.gameOver);$$('[data-direction]').forEach((button)=>{button.disabled=!isMyTurn()||state.gameOver;}); $('#selected-car-text').textContent=state.selected?`${state.cars.find((c)=>c.id===state.selected).label} 자동차 선택됨 · 방향을 고르세요`:'움직일 자동차를 선택하세요'; $('#last-move').textContent=`직전 이동 차량: ${state.lastMoved?(state.cars.find((c)=>c.id===state.lastMoved)?.label||'탈출 차량'):'없음'}`;
   ['red','yellow'].forEach((teamName)=>{const b=$(`#${teamName}-timeout`);b.disabled=!state.timeouts[teamName]||teamName!==state.activeTeam;$(`#${teamName}-timeout-state`).textContent=state.timeouts[teamName]?'1 / 1':'0 / 1';}); updateTimerUI();
 }
 
@@ -251,8 +275,9 @@ function passTurn(expired){
   else if(!teamHasTime(current)){ refillClocks(); state.activeTeam=opponent; }
   showHandoff(); publishGame();
 }
-function showHandoff(){const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=team.players[index];$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);$('#handoff-copy').innerHTML=(mine?'다른 플레이어는 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'현재 차례인 플레이어의 컴퓨터에서만 게임판이 열립니다.<br />이 화면에서 대기하세요.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
+function showHandoff(){if(isBoardWatcher()){showSpectator();return;}clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);$('#handoff-copy').innerHTML=(mine?'다른 플레이어는 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'현재 차례인 플레이어의 컴퓨터에서만 게임판이 열립니다.<br />이 화면에서 대기하세요.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
 function enterTurn(){
+  clearInterval(spectatorTimer); $('#game-screen').classList.remove('watching');
   if(!isMyTurn()||state.gameOver||state.timeoutActive)return;
   const team=state.activeTeam,index=state.activePlayer[team];
   state.turnsTaken[team][index]=true; state.turnStartedAt=Date.now();
@@ -316,8 +341,8 @@ async function beginSetup(){
 }
 
 $('#open-setup').addEventListener('click',()=>openModal('settings-modal'));$$('[data-open-modal]').forEach((button)=>button.addEventListener('click',()=>openModal(button.dataset.openModal)));$$('.modal-close,[data-close-modal]').forEach((button)=>button.addEventListener('click',()=>closeModal(button)));$$('.modal-backdrop').forEach((modal)=>modal.addEventListener('click',(event)=>{if(event.target===modal&&!['winner-modal','timeout-modal'].includes(modal.id))modal.classList.remove('open');}));
-$$('[data-size]').forEach((button)=>button.addEventListener('click',()=>{state.size=Number(button.dataset.size);$$('.size-switch button').forEach((b)=>b.classList.toggle('selected',b===button));renderNameFields();}));
-$('#save-settings').addEventListener('click',()=>{['red','yellow'].forEach((team)=>{state.teams[team].name=$(`#${team}-name-input`).value.trim()||(team==='red'?'레드 팀':'옐로 팀');state.teams[team].players=$$(`#${team}-name-fields input`).map((input,i)=>input.value.trim()||`${team==='red'?'레드':'옐로'} ${i+1}`);});renderLobby();closeModal($('#settings-modal'));publishGame();});
+$$('[data-size]').forEach((button)=>button.addEventListener('click',()=>{state.size=Number(button.dataset.size);$$('.size-switch button').forEach((b)=>b.classList.toggle('selected',b===button));syncPlayerSlots();renderNameFields();}));
+$('#save-settings').addEventListener('click',()=>{['red','yellow'].forEach((team)=>{state.teams[team].name=$(`#${team}-name-input`).value.trim()||(team==='red'?'레드 팀':'옐로 팀');state.teams[team].players=Array.from({length:state.size},(_,i)=>defaultName(team,i));});renderLobby();closeModal($('#settings-modal'));publishGame();});
 $('#create-room').addEventListener('click',createRoom);$('#join-room').addEventListener('click',joinRoom);$('#start-online-game').addEventListener('click',beginSetup);$('#leave-room').addEventListener('click',()=>{clearInterval(network.polling);network.roomCode=null;network.isHost=false;state.roomLobby=null;closeModal($('#room-lobby-modal'));setRoomStatus('로컬 게임');history.replaceState(null,'',location.pathname);});
 $('#begin-placement').addEventListener('click',beginSetup);$('#cancel-setup').addEventListener('click',()=>showScreen('lobby-screen'));$('#placement-next').addEventListener('click',()=>{if(!canPlaceNow())return;if(state.placement.phase===1){state.placement.phase=2;renderSetupBoard();}else{setupCars();showHandoff();}publishGame();});
 $('#enter-turn').addEventListener('click',enterTurn);$('#handoff-lobby').addEventListener('click',()=>{clearInterval(state.timer);showScreen('lobby-screen');});$('#leave-game').addEventListener('click',()=>{clearInterval(state.timer);showScreen('lobby-screen');});
