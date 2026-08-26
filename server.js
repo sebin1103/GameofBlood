@@ -30,6 +30,22 @@ http.createServer(async (request, response) => {
     rooms.set(code, { state:null, updatedAt:Date.now() });
     return json(response, 201, { code });
   }
+  const claimMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)\/claim$/);
+  if (claimMatch && request.method === 'POST') {
+    const room = rooms.get(claimMatch[1]);
+    if (!room?.state?.state?.roomLobby) return json(response, 404, { error:'대기실을 찾을 수 없습니다.' });
+    try {
+      const payload = await readBody(request);
+      const claims = room.state.state.roomLobby.claims;
+      const current = claims[payload.slot];
+      if (current && current.clientId !== payload.clientId) return json(response, 409, { error:'이미 다른 플레이어가 참가한 자리입니다.' });
+      const alreadySeated = Object.entries(claims).find(([slot, claim]) => slot !== payload.slot && claim?.clientId === payload.clientId);
+      if (alreadySeated) return json(response, 409, { error:'이미 다른 플레이어 좌석으로 참가했습니다.' });
+      claims[payload.slot] = { clientId:payload.clientId, name:payload.name };
+      room.updatedAt = Date.now();
+      return json(response, 200, { state:room.state, updatedAt:room.updatedAt });
+    } catch { return json(response, 400, { error:'잘못된 참가 요청입니다.' }); }
+  }
   const roomMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)$/);
   if (roomMatch) {
     const room = rooms.get(roomMatch[1]);
