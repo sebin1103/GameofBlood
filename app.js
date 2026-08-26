@@ -29,7 +29,7 @@ let neutralStarts = [
   { pos:[0,13], orientation:'h', length:3 }, { pos:[4,13], orientation:'h', length:3 },
   { pos:[7,13], orientation:'h', length:3 },
 ];
-const state = { size:2, teams:{red:{name:'레드 팀',players:['레드 1','레드 2']},yellow:{name:'옐로 팀',players:['옐로 1','옐로 2']}}, placement:{phase:1,opponentSlots:[],ownSlot:[]}, cars:[], activeTeam:'red', activePlayer:{red:0,yellow:0}, remaining:{red:[],yellow:[]}, turnsTaken:{red:[],yellow:[]}, score:{red:0,yellow:0}, lastMoved:null, selected:null, moves:0, timeouts:{red:true,yellow:true}, timeoutActive:null, completedOrder:[], winner:null, winReason:null, round:1, timer:null, turnStartedAt:0, gameOver:false, roomLobby:null };
+const state = { size:2, teams:{red:{name:'레드 팀',players:['레드 1','레드 2']},yellow:{name:'옐로 팀',players:['옐로 1','옐로 2']}}, placement:{phase:1,opponentSlots:[],ownSlot:[]}, cars:[], activeTeam:'red', activePlayer:{red:0,yellow:0}, remaining:{red:[],yellow:[]}, turnsTaken:{red:[],yellow:[]}, score:{red:0,yellow:0}, lastMoved:null, selected:null, moves:0, timeouts:{red:true,yellow:true}, timeoutActive:null, completedOrder:[], winner:null, winReason:null, round:1, seated:{red:null,yellow:null}, timer:null, turnStartedAt:0, gameOver:false, roomLobby:null };
 let dragState = null;
 let timeoutTicker = null;
 let spectatorTimer = null;
@@ -227,7 +227,7 @@ function chooseSlot(index){
 function setupCars(){
   const redSlots=state.placement.opponentSlots.concat(state.placement.ownSlot); const yellowSlots=startSlots.map((_,i)=>i).filter((i)=>!redSlots.includes(i));
   state.cars=[...redSlots.map((slot,i)=>({id:`red-${i+1}`,team:'red',pos:[...startSlots[slot].pos],orientation:startSlots[slot].orientation,length:2,label:`R${i+1}`})),...yellowSlots.map((slot,i)=>({id:`yellow-${i+1}`,team:'yellow',pos:[...startSlots[slot].pos],orientation:startSlots[slot].orientation,length:2,label:`Y${i+1}`})),...neutralStarts.map((car,i)=>({id:`neutral-${i+1}`,team:'neutral',pos:[...car.pos],orientation:car.orientation,length:car.length,label:`N${i+1}`}))];
-  state.remaining={red:Array(state.size).fill(60),yellow:Array(state.size).fill(60)}; state.turnsTaken={red:Array(state.size).fill(false),yellow:Array(state.size).fill(false)}; state.activeTeam='red'; state.activePlayer={red:0,yellow:0}; state.score={red:0,yellow:0}; state.lastMoved=null; state.selected=null; state.moves=0; state.timeouts={red:true,yellow:true}; state.timeoutActive=null; state.completedOrder=[]; state.winner=null; state.winReason=null; state.round=1; state.gameOver=false;
+  state.remaining={red:Array(state.size).fill(60),yellow:Array(state.size).fill(60)}; state.turnsTaken={red:Array(state.size).fill(false),yellow:Array(state.size).fill(false)}; state.activeTeam='red'; state.activePlayer={red:0,yellow:0}; state.score={red:0,yellow:0}; state.lastMoved=null; state.selected=null; state.moves=0; state.timeouts={red:true,yellow:true}; state.timeoutActive=null; state.completedOrder=[]; state.winner=null; state.winReason=null; state.round=1; state.seated={red:null,yellow:null}; state.gameOver=false;
 }
 
 function teamCanMove(car){ return car.team===state.activeTeam||car.team==='neutral'; }
@@ -285,9 +285,9 @@ function slideCar(car,direction){
 }
 function consumeCurrentTime(){if(!state.turnStartedAt)return;const elapsed=(Date.now()-state.turnStartedAt)/1000,team=state.activeTeam,index=state.activePlayer[team];state.remaining[team][index]=Math.max(0,state.remaining[team][index]-elapsed);state.turnStartedAt=0;}
 function otherTeam(team){ return team==='red'?'yellow':'red'; }
-function refillClocks(){ state.remaining={red:Array(state.size).fill(60),yellow:Array(state.size).fill(60)}; state.activePlayer={red:0,yellow:0}; state.round=(state.round||1)+1; }
+function refillClocks(){ state.remaining={red:Array(state.size).fill(60),yellow:Array(state.size).fill(60)}; state.activePlayer={red:0,yellow:0}; state.seated={red:null,yellow:null}; state.round=(state.round||1)+1; }
 function teamHasTime(team){ return state.remaining[team].some((value)=>value>0); }
-function advanceSeat(team){ for(let step=1;step<=state.size;step+=1){ const seat=(state.activePlayer[team]+step)%state.size; if(state.remaining[team][seat]>0){ state.activePlayer[team]=seat; return true; } } return false; }
+function advanceSeat(team){ for(let step=1;step<=state.size;step+=1){ const seat=(state.activePlayer[team]+step)%state.size; if(state.remaining[team][seat]>0){ if(state.activePlayer[team]!==seat)state.seated[team]=null; state.activePlayer[team]=seat; return true; } } return false; }
 function seatWithTime(team){ return state.remaining[team][state.activePlayer[team]]>0||advanceSeat(team); }
 function allRequiredTurnsDone(){ return ['red','yellow'].every((team)=>state.turnsTaken[team].every((taken,index)=>taken||state.remaining[team][index]<=0)); }
 function checkVictory(){ if(state.gameOver)return true; if(!state.completedOrder.length||!allRequiredTurnsDone())return false; finishGame(state.completedOrder[0],false); return true; }
@@ -306,11 +306,19 @@ function renderMatchup(){
     $(`#matchup-${team}-team`).textContent=state.teams[team].name;
   });
 }
-function showHandoff(){if(isBoardWatcher()){showSpectator();return;}clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();if(mine){$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-suffix').innerHTML='만<br />자동차를 움직일 수 있습니다.';}else{$('#handoff-team').textContent='지금은';$('#handoff-team').style.color='var(--paper)';$('#handoff-player').textContent=`${playerName('red',state.activePlayer.red)} · ${playerName('yellow',state.activePlayer.yellow)}`;$('#handoff-suffix').innerHTML='만<br />화면을 볼 수 있습니다.';}$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);renderMatchup();(()=>{const seat=myClaim();const el=$('#handoff-seat');if(!el)return;if(!seat){el.textContent='이 브라우저는 참가한 자리가 없습니다 · 관전만 가능';el.style.color='#c4762f';return;}if(seat.where==='bench'){el.textContent=`${seat.name} · 대기석`;el.style.color='#c4762f';return;}const [seatTeam,seatIndex]=seat.where.split('-');el.textContent=`내 자리: ${state.teams[seatTeam].name} ${Number(seatIndex)+1}번 (${seat.name})`;el.style.color='';})();$('#handoff-copy').innerHTML=(mine?'대기 중인 팀원은 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'지금은 두 사람이 1대1로 진행 중입니다.<br />내 차례가 오면 이 화면에서 게임판이 열립니다.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
+function showHandoff(){
+  if(isBoardWatcher()){showSpectator();return;}
+  if(isMyTurn()&&!state.gameOver&&!state.timeoutActive&&state.cars.length&&state.seated?.[state.activeTeam]===state.activePlayer[state.activeTeam]){
+    setTimeout(()=>{ if(isMyTurn()&&!state.timer&&!state.gameOver&&!state.timeoutActive)enterTurn(); },0);
+    return;
+  }clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();if(mine){$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-suffix').innerHTML='만<br />자동차를 움직일 수 있습니다.';}else{$('#handoff-team').textContent='지금은';$('#handoff-team').style.color='var(--paper)';$('#handoff-player').textContent=`${playerName('red',state.activePlayer.red)} · ${playerName('yellow',state.activePlayer.yellow)}`;$('#handoff-suffix').innerHTML='만<br />화면을 볼 수 있습니다.';}$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);renderMatchup();(()=>{const seat=myClaim();const el=$('#handoff-seat');if(!el)return;if(!seat){el.textContent='이 브라우저는 참가한 자리가 없습니다 · 관전만 가능';el.style.color='#c4762f';return;}if(seat.where==='bench'){el.textContent=`${seat.name} · 대기석`;el.style.color='#c4762f';return;}const [seatTeam,seatIndex]=seat.where.split('-');el.textContent=`내 자리: ${state.teams[seatTeam].name} ${Number(seatIndex)+1}번 (${seat.name})`;el.style.color='';})();$('#handoff-copy').innerHTML=(mine?'대기 중인 팀원은 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'지금은 두 사람이 1대1로 진행 중입니다.<br />내 차례가 오면 이 화면에서 게임판이 열립니다.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
 function enterTurn(){
+  if(state.timer)return;
   clearInterval(spectatorTimer); $('#game-screen').classList.remove('watching');
   if(!isMyTurn()||state.gameOver||state.timeoutActive)return;
   const team=state.activeTeam,index=state.activePlayer[team];
+  if(!state.seated)state.seated={red:null,yellow:null};
+  state.seated[team]=index;
   state.turnsTaken[team][index]=true; state.turnStartedAt=Date.now();
   showScreen('game-screen'); renderGame(); publishGame(); clearInterval(state.timer);
   state.timer=setInterval(()=>{
