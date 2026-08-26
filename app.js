@@ -33,6 +33,7 @@ const state = { size:2, teams:{red:{name:'레드 팀',players:['레드 1','레�
 let dragState = null;
 let timeoutTicker = null;
 let spectatorTimer = null;
+let handoffTimer = null;
 const TIMEOUT_SECONDS = 60;
 let ignoreClickUntil = 0;
 const storedClientId=sessionStorage.getItem('hell-commute-client')||crypto.randomUUID();sessionStorage.setItem('hell-commute-client',storedClientId);
@@ -97,6 +98,7 @@ function applyGame(payload){
   if(incoming.roomLobby?.claims){ const mine=Object.entries(incoming.roomLobby.claims).find(([,claim])=>claim?.clientId===network.clientId); if(mine){ const [team,index]=mine[0].split('-'); network.identity={team,player:Number(index)}; } }
   const iAmActive=network.roomCode&&network.identity.team===incoming.activeTeam&&network.identity.player===incoming.activePlayer?.[incoming.activeTeam];
   if(iAmActive&&state.timer&&state.turnStartedAt&&$('#game-screen').classList.contains('active')&&!incoming.timeoutActive&&!incoming.gameOver)return;
+  if(incoming.turnStartedAt!==state.turnStartedAt)network.localTurnStart=incoming.turnStartedAt?Date.now():0;
   clearInterval(state.timer); Object.assign(state,incoming,{timer:null});
   startSlots=payload.layout.startSlots; structures=payload.layout.structures; neutralStarts=payload.layout.neutralStarts;
   network.applying=true; routeScreens(); network.applying=false;
@@ -112,21 +114,26 @@ function routeScreens(){
   if(isBoardWatcher()){ showSpectator(); return; }
   showHandoff();
 }
+function activeRemaining(){
+  const team=state.activeTeam,index=state.activePlayer[team];
+  const base=state.remaining?.[team]?.[index]??60;
+  if(!state.turnStartedAt||!network.localTurnStart)return base;
+  return base-(Date.now()-network.localTurnStart)/1000;
+}
 function isBoardWatcher(){
   if(!network.roomCode||state.gameOver||state.timeoutActive||!state.cars.length)return false;
   const opponent=otherTeam(state.activeTeam);
   return network.identity.team===opponent&&network.identity.player===state.activePlayer[opponent];
 }
 function showSpectator(){
-  clearInterval(state.timer); state.timer=null; state.selected=null;
+  clearInterval(handoffTimer); clearInterval(state.timer); state.timer=null; state.selected=null;
   showScreen('game-screen'); $('#game-screen').classList.add('watching'); renderGame();
   $('#selected-car-text').textContent='상대 플레이어의 턴 — 관전 중';
   $('#move-notice').textContent=state.lastMoved?'직전에 움직인 자동차에 고깔이 표시됩니다.':'아직 움직인 자동차가 없습니다.';
   clearInterval(spectatorTimer);
   spectatorTimer=setInterval(()=>{
     if(!isBoardWatcher()){ clearInterval(spectatorTimer); return; }
-    const team=state.activeTeam,index=state.activePlayer[team];
-    updateTimerUI(state.turnStartedAt?state.remaining[team][index]-(Date.now()-state.turnStartedAt)/1000:state.remaining[team][index]);
+    updateTimerUI(activeRemaining());
   },250);
 }
 function publishGame(){
@@ -311,15 +318,21 @@ function showHandoff(){
   if(isMyTurn()&&!state.gameOver&&!state.timeoutActive&&state.cars.length&&state.seated?.[state.activeTeam]===state.activePlayer[state.activeTeam]){
     setTimeout(()=>{ if(isMyTurn()&&!state.timer&&!state.gameOver&&!state.timeoutActive)enterTurn(); },0);
     return;
-  }clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();if(mine){$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-suffix').innerHTML='만<br />자동차를 움직일 수 있습니다.';}else{$('#handoff-team').textContent='지금은';$('#handoff-team').style.color='var(--paper)';$('#handoff-player').textContent=`${playerName('red',state.activePlayer.red)} · ${playerName('yellow',state.activePlayer.yellow)}`;$('#handoff-suffix').innerHTML='만<br />화면을 볼 수 있습니다.';}$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);renderMatchup();(()=>{const seat=myClaim();const el=$('#handoff-seat');if(!el)return;if(!seat){el.textContent='이 브라우저는 참가한 자리가 없습니다 · 관전만 가능';el.style.color='#c4762f';return;}if(seat.where==='bench'){el.textContent=`${seat.name} · 대기석`;el.style.color='#c4762f';return;}const [seatTeam,seatIndex]=seat.where.split('-');el.textContent=`내 자리: ${state.teams[seatTeam].name} ${Number(seatIndex)+1}번 (${seat.name})`;el.style.color='';})();$('#handoff-copy').innerHTML=(mine?'대기 중인 팀원은 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'지금은 두 사람이 1대1로 진행 중입니다.<br />내 차례가 오면 이 화면에서 게임판이 열립니다.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
+  }clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();if(mine){$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-suffix').innerHTML='만<br />자동차를 움직일 수 있습니다.';}else{$('#handoff-team').textContent='지금은';$('#handoff-team').style.color='var(--paper)';$('#handoff-player').textContent=`${playerName('red',state.activePlayer.red)} · ${playerName('yellow',state.activePlayer.yellow)}`;$('#handoff-suffix').innerHTML='만<br />화면을 볼 수 있습니다.';}clearInterval(handoffTimer);
+  $('#handoff-time-label').textContent=mine?'남은 개인 시간':`${playerName(state.activeTeam,index)} 남은 시간`;
+  $('#handoff-time').textContent=timeText(mine?state.remaining[state.activeTeam][index]:activeRemaining());
+  if(!mine)handoffTimer=setInterval(()=>{
+    if(!$('#handoff-screen').classList.contains('active')||state.gameOver){clearInterval(handoffTimer);return;}
+    $('#handoff-time').textContent=timeText(Math.max(0,activeRemaining()));
+  },250);renderMatchup();(()=>{const seat=myClaim();const el=$('#handoff-seat');if(!el)return;if(!seat){el.textContent='이 브라우저는 참가한 자리가 없습니다 · 관전만 가능';el.style.color='#c4762f';return;}if(seat.where==='bench'){el.textContent=`${seat.name} · 대기석`;el.style.color='#c4762f';return;}const [seatTeam,seatIndex]=seat.where.split('-');el.textContent=`내 자리: ${state.teams[seatTeam].name} ${Number(seatIndex)+1}번 (${seat.name})`;el.style.color='';})();$('#handoff-copy').innerHTML=(mine?'대기 중인 팀원은 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'지금은 두 사람이 1대1로 진행 중입니다.<br />내 차례가 오면 이 화면에서 게임판이 열립니다.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
 function enterTurn(){
   if(state.timer)return;
-  clearInterval(spectatorTimer); $('#game-screen').classList.remove('watching');
+  clearInterval(spectatorTimer); clearInterval(handoffTimer); $('#game-screen').classList.remove('watching');
   if(!isMyTurn()||state.gameOver||state.timeoutActive)return;
   const team=state.activeTeam,index=state.activePlayer[team];
   if(!state.seated)state.seated={red:null,yellow:null};
   state.seated[team]=index;
-  state.turnsTaken[team][index]=true; state.turnStartedAt=Date.now();
+  state.turnsTaken[team][index]=true; state.turnStartedAt=Date.now(); network.localTurnStart=state.turnStartedAt;
   showScreen('game-screen'); renderGame(); publishGame(); clearInterval(state.timer);
   state.timer=setInterval(()=>{
     if(!state.turnStartedAt)return;
@@ -357,7 +370,7 @@ function renderTimeoutView(){
 function endTimeout(){ clearInterval(timeoutTicker); state.timeoutActive=null; closeModal($('#timeout-modal')); publishGame(); showHandoff(); }
 function finishGame(team,byTime){
   consumeCurrentTime(); clearInterval(state.timer); state.timer=null; clearInterval(timeoutTicker);
-  state.gameOver=true; state.winner=team||null; state.winReason=byTime?'time':'escape'; state.timeoutActive=null;
+  clearInterval(handoffTimer); clearInterval(spectatorTimer); state.gameOver=true; state.winner=team||null; state.winReason=byTime?'time':'escape'; state.timeoutActive=null;
   closeModal($('#timeout-modal')); renderWinner(); publishGame();
 }
 function renderWinner(){
