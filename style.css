@@ -167,3 +167,16 @@ body{font-family:"IBM Plex Sans KR","Noto Sans KR",sans-serif}
 @keyframes conePulse{0%,100%{transform:translateX(-50%) translateY(0);opacity:1}50%{transform:translateX(-50%) translateY(-2px);opacity:.72}}
 .tile.last-moved{z-index:8;outline:2px solid #ff8a1f;outline-offset:2px;box-shadow:0 0 20px rgba(255,124,22,.5),inset 0 2px 0 rgba(255,255,255,.45)}
 .timeout-board .cone{animation:none}
+
+/* 대기 화면 — 지금 누가 붙고 있는지 */
+.matchup{margin:22px 0 4px;padding:13px;border:1px solid var(--line);background:#120d0f}
+.matchup>small{display:block;margin-bottom:9px;font:9px "DM Mono",monospace;letter-spacing:.12em;color:#9b8f8c}
+.matchup-row{display:flex;align-items:center;justify-content:center;gap:12px}
+.mu{display:flex;align-items:center;gap:7px;min-width:0;flex:1}
+.mu.yellow{justify-content:flex-end}
+.mu i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.mu.red i{background:var(--red);box-shadow:0 0 9px var(--red)}
+.mu.yellow i{background:var(--yellow);box-shadow:0 0 9px var(--yellow)}
+.mu b{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mu em{font-style:normal;font:9px "DM Mono",monospace;color:#9b8f8c;white-space:nowrap}
+.mu-vs{font:10px "DM Mono",monospace;color:#7d7371;flex:0 0 auto}

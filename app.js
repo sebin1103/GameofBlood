@@ -275,7 +275,13 @@ function passTurn(expired){
   else if(!teamHasTime(current)){ refillClocks(); state.activeTeam=opponent; }
   showHandoff(); publishGame();
 }
-function showHandoff(){if(isBoardWatcher()){showSpectator();return;}clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);$('#handoff-copy').innerHTML=(mine?'다른 플레이어는 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'현재 차례인 플레이어의 컴퓨터에서만 게임판이 열립니다.<br />이 화면에서 대기하세요.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
+function renderMatchup(){
+  ['red','yellow'].forEach((team)=>{
+    $(`#matchup-${team}`).textContent=playerName(team,state.activePlayer[team]);
+    $(`#matchup-${team}-team`).textContent=state.teams[team].name;
+  });
+}
+function showHandoff(){if(isBoardWatcher()){showSpectator();return;}clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();if(mine){$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-suffix').innerHTML='만<br />자동차를 움직일 수 있습니다.';}else{$('#handoff-team').textContent='지금은';$('#handoff-team').style.color='var(--paper)';$('#handoff-player').textContent=`${playerName('red',state.activePlayer.red)} · ${playerName('yellow',state.activePlayer.yellow)}`;$('#handoff-suffix').innerHTML='만<br />화면을 볼 수 있습니다.';}$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);renderMatchup();$('#handoff-copy').innerHTML=(mine?'대기 중인 팀원은 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'지금은 두 사람이 1대1로 진행 중입니다.<br />내 차례가 오면 이 화면에서 게임판이 열립니다.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
 function enterTurn(){
   clearInterval(spectatorTimer); $('#game-screen').classList.remove('watching');
   if(!isMyTurn()||state.gameOver||state.timeoutActive)return;
