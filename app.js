@@ -44,13 +44,33 @@ function defaultName(team,index){ return `${team==='red'?'레드':'옐로'} ${in
 function playerName(team,index){ return state.roomLobby?.claims?.[`${team}-${index}`]?.name || state.teams[team].players[index] || defaultName(team,index); }
 function lobbySlots(){ return ['red','yellow'].flatMap((team)=>state.teams[team].players.map((name,index)=>({key:`${team}-${index}`,team,index,name}))); }
 function allSeatsFilled(){ return lobbySlots().every((slot)=>state.roomLobby?.claims?.[slot.key]); }
+function myClaim(){
+  const claims=state.roomLobby?.claims||{};
+  const seat=Object.entries(claims).find(([,claim])=>claim?.clientId===network.clientId);
+  if(seat)return {where:seat[0],name:seat[1].name};
+  const benched=(state.roomLobby?.bench||[]).find((person)=>person.clientId===network.clientId);
+  if(benched)return {where:'bench',name:benched.name};
+  return null;
+}
 function renderRoomLobby(){
-  if(!network.roomCode||!state.roomLobby)return; $('#waiting-room-code').textContent=network.roomCode;
-  const mineSlot=Object.entries(state.roomLobby.claims).find(([,claim])=>claim?.clientId===network.clientId)?.[0];
-  $('#seat-list').innerHTML=['red','yellow'].map((team)=>`<section class="seat-team ${team==='red'?'red-seat-team':'yellow-seat-team'}"><strong>${state.teams[team].name}</strong>${state.teams[team].players.map((name,index)=>{const key=`${team}-${index}`,claim=state.roomLobby.claims[key],mine=claim?.clientId===network.clientId,disabled=(claim&&!mine)||(mineSlot&&!mine);return `<button class="seat-button ${claim?'taken':''} ${mine?'mine':''} ${!claim?'available':''}" data-seat="${key}" ${disabled?'disabled':''}><b>PLAYER ${index+1}</b><span>${claim?(mine?`${claim.name} · 내 자리`:claim.name):'빈 자리 · 여기로 참가'}</span></button>`;}).join('')}</section>`).join('');
+  if(!network.roomCode||!state.roomLobby)return;
+  $('#waiting-room-code').textContent=network.roomCode;
+  const claims=state.roomLobby.claims, bench=state.roomLobby.bench||[], mine=myClaim();
+  if(mine&&$('#nickname-input')&&!$('#nickname-input').value.trim())$('#nickname-input').value=mine.name;
+  $('#seat-list').innerHTML=['red','yellow'].map((team)=>`<section class="seat-team ${team==='red'?'red-seat-team':'yellow-seat-team'}"><strong>${state.teams[team].name}</strong>${Array.from({length:state.size},(_,index)=>{
+    const key=`${team}-${index}`,claim=claims[key],isMine=claim?.clientId===network.clientId,taken=!!claim&&!isMine;
+    const label=claim?(isMine?`${claim.name} · 내 자리`:claim.name):(mine?'여기로 이동':'빈 자리 · 여기로 참가');
+    return `<button class="seat-button ${claim?'taken':''} ${isMine?'mine':''} ${!claim?'available':''}" data-seat="${key}" ${taken?'disabled':''}><b>PLAYER ${index+1}</b><span>${label}</span></button>`;
+  }).join('')}</section>`).join('');
   $$('.seat-button[data-seat]').forEach((button)=>button.addEventListener('click',()=>claimSeat(button.dataset.seat)));
-  const ready=allSeatsFilled(); const start=$('#start-online-game'); start.disabled=!network.isHost||!ready; start.textContent=ready?(network.isHost?'게임 준비 시작 →':'방장이 게임을 시작합니다'):'모두 입장하면 게임 준비 시작 →';
-  $('#seat-help').textContent=ready?'모든 플레이어가 입장했습니다.':mineSlot?'참가한 좌석이 내 조작 권한입니다. 다른 좌석은 선택할 수 없습니다.':'빈 좌석을 선택하면 해당 플레이어의 조작 권한을 받습니다.';
+  $('#bench-list').innerHTML=bench.length?bench.map((person)=>`<span class="bench-chip ${person.clientId===network.clientId?'mine':''}">${person.name}${person.clientId===network.clientId?' · 나':''}</span>`).join(''):'<span class="bench-empty">비어 있음</span>';
+  const onBench=mine?.where==='bench';
+  $('#go-bench').disabled=!mine||onBench;
+  $('#go-bench').textContent=onBench?'대기석에 있습니다':'대기석으로 이동';
+  const ready=allSeatsFilled(); const start=$('#start-online-game');
+  start.disabled=!network.isHost||!ready;
+  start.textContent=ready?(network.isHost?'게임 준비 시작 →':'방장이 게임을 시작합니다'):'모두 입장하면 게임 준비 시작 →';
+  $('#seat-help').textContent=ready?'모든 자리가 찼습니다.':onBench?'대기석입니다. 빈 자리를 누르면 참가합니다.':mine?'빈 자리를 누르면 그 자리로 옮겨집니다.':'닉네임을 입력하고 자리를 선택하세요.';
 }
 function showRoomLobby(){ showScreen('lobby-screen'); renderRoomLobby(); openModal('room-lobby-modal'); }
 function showSetupWaiting(){
@@ -60,12 +80,16 @@ function showSetupWaiting(){
   $('#start-online-game').disabled=true; $('#start-online-game').textContent='게임 준비 중…'; openModal('room-lobby-modal');
 }
 async function claimSeat(slot){
-  if(!network.roomCode||!state.roomLobby||state.roomLobby.started)return; const detail=lobbySlots().find((item)=>item.key===slot);
-  const typed=($('#nickname-input')?.value||'').trim().slice(0,12);
+  if(!network.roomCode||!state.roomLobby||state.roomLobby.started)return;
+  const mine=myClaim();
+  const typed=($('#nickname-input')?.value||'').trim().slice(0,12)||mine?.name||'';
   if(!typed){ $('#seat-help').textContent='먼저 닉네임을 입력한 뒤 자리를 선택하세요.'; $('#nickname-input')?.focus(); return; }
   const response=await fetch(`/api/rooms/${network.roomCode}/claim`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slot,clientId:network.clientId,name:typed})});
-  if(!response.ok){$('#seat-help').textContent='이미 다른 플레이어가 참가한 자리입니다.';return;}
-  const result=await response.json(); network.identity={team:detail.team,player:detail.index}; network.lastUpdated=result.updatedAt; applyGame(result.state); renderRoomLobby();
+  if(!response.ok){ $('#seat-help').textContent=slot==='bench'?'대기석으로 이동하지 못했습니다.':'이미 다른 플레이어가 참가한 자리입니다.'; return; }
+  const result=await response.json();
+  if(slot==='bench'){ network.identity={team:null,player:null}; }
+  else { const detail=lobbySlots().find((item)=>item.key===slot); network.identity={team:detail.team,player:detail.index}; }
+  network.lastUpdated=result.updatedAt; applyGame(result.state); renderRoomLobby();
 }
 function exportGame(){ const { timer, ...safeState }=state; return { state:safeState, layout:{startSlots,structures,neutralStarts} }; }
 function applyGame(payload){
@@ -119,7 +143,7 @@ async function pullGame(){
   try{ const response=await fetch(`/api/rooms/${network.roomCode}`); if(!response.ok)return; const room=await response.json(); if(room.updatedAt>network.lastUpdated&&room.state){network.lastUpdated=room.updatedAt;applyGame(room.state);} }catch{}
 }
 async function createRoom(){
-  try{const response=await fetch('/api/rooms',{method:'POST'});const data=await response.json();network.roomCode=data.code;network.isHost=true;network.lastUpdated=0;state.roomLobby={started:false,claims:Object.fromEntries(lobbySlots().map((slot)=>[slot.key,null]))};setRoomStatus(`방 코드 ${data.code}`);history.replaceState(null,'',`?room=${data.code}`);startPolling();publishGame();showRoomLobby();return true;}catch{setRoomStatus('서버 연결 실패');return false;}
+  try{const response=await fetch('/api/rooms',{method:'POST'});const data=await response.json();network.roomCode=data.code;network.isHost=true;network.lastUpdated=0;state.roomLobby={started:false,bench:[],claims:Object.fromEntries(lobbySlots().map((slot)=>[slot.key,null]))};setRoomStatus(`방 코드 ${data.code}`);history.replaceState(null,'',`?room=${data.code}`);startPolling();publishGame();showRoomLobby();return true;}catch{setRoomStatus('서버 연결 실패');return false;}
 }
 async function joinRoom(){
   const code=$('#join-room-code').value.trim().toUpperCase();if(!code)return;
@@ -171,10 +195,11 @@ function generateNewBoard(){ startSlots=generateTeamSlots(); structures=generate
 function syncPlayerSlots(){ ['red','yellow'].forEach((team)=>{ state.teams[team].players=Array.from({length:state.size},(_,i)=>defaultName(team,i)); }); }
 function renderNameFields(){ ['red','yellow'].forEach((team)=>{ $(`#${team}-name-fields`).innerHTML=Array.from({length:state.size},(_,i)=>`<div class="slot-preview">PLAYER ${i+1}</div>`).join(''); }); }
 function renderLobby(){ $('#match-label').textContent=`${state.size} : ${state.size} 팀전`; $('#lobby-red-name').textContent=state.teams.red.name; $('#lobby-yellow-name').textContent=state.teams.yellow.name; $('#red-count').textContent=`${state.size}명`; $('#yellow-count').textContent=`${state.size}명`; }
+function renderNeutralPreview(root){ neutralStarts.forEach((car)=>root.insertAdjacentHTML('beforeend',`<i class="tile neutral preview ${car.orientation==='h'?'horizontal':'vertical'}" style="${cellStyle(car.pos,car.orientation,car.length)}"><i class="car-window"></i><i class="car-light"></i></i>`)); }
 function renderStaticStructures(root){ structures.forEach((p)=>root.insertAdjacentHTML('beforeend',`<i class="structure" style="${cellStyle(p)}"></i>`)); }
 
 function renderSetupBoard(){
-  const board=$('#setup-board'); board.innerHTML=''; renderStaticStructures(board);
+  const board=$('#setup-board'); board.innerHTML=''; renderStaticStructures(board); renderNeutralPreview(board);
   const phase1=state.placement.phase===1, mayPlace=canPlaceNow(), chosen=state.placement.opponentSlots.concat(state.placement.ownSlot);
   startSlots.forEach((slot,index)=>{ const red=chosen.includes(index); board.insertAdjacentHTML('beforeend',`<button class="cell-marker ${slot.orientation==='v'?'vertical':''} ${red?'selected-red':''}" style="${cellStyle(slot.pos,slot.orientation,2)}" data-slot="${index}" ${mayPlace?'':'disabled'}>${red?'R':'＋'}</button>`); });
   $$('.cell-marker').forEach((node)=>node.addEventListener('click',()=>chooseSlot(Number(node.dataset.slot))));
@@ -281,7 +306,7 @@ function renderMatchup(){
     $(`#matchup-${team}-team`).textContent=state.teams[team].name;
   });
 }
-function showHandoff(){if(isBoardWatcher()){showSpectator();return;}clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();if(mine){$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-suffix').innerHTML='만<br />자동차를 움직일 수 있습니다.';}else{$('#handoff-team').textContent='지금은';$('#handoff-team').style.color='var(--paper)';$('#handoff-player').textContent=`${playerName('red',state.activePlayer.red)} · ${playerName('yellow',state.activePlayer.yellow)}`;$('#handoff-suffix').innerHTML='만<br />화면을 볼 수 있습니다.';}$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);renderMatchup();$('#handoff-copy').innerHTML=(mine?'대기 중인 팀원은 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'지금은 두 사람이 1대1로 진행 중입니다.<br />내 차례가 오면 이 화면에서 게임판이 열립니다.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
+function showHandoff(){if(isBoardWatcher()){showSpectator();return;}clearInterval(spectatorTimer);$('#game-screen').classList.remove('watching');const team=state.teams[state.activeTeam],index=state.activePlayer[state.activeTeam],mine=isMyTurn();if(mine){$('#handoff-team').textContent=team.name;$('#handoff-team').style.color=colorFor(state.activeTeam);$('#handoff-player').textContent=playerName(state.activeTeam,index);$('#handoff-suffix').innerHTML='만<br />자동차를 움직일 수 있습니다.';}else{$('#handoff-team').textContent='지금은';$('#handoff-team').style.color='var(--paper)';$('#handoff-player').textContent=`${playerName('red',state.activePlayer.red)} · ${playerName('yellow',state.activePlayer.yellow)}`;$('#handoff-suffix').innerHTML='만<br />화면을 볼 수 있습니다.';}$('#handoff-time').textContent=timeText(state.remaining[state.activeTeam][index]);renderMatchup();(()=>{const seat=myClaim();const el=$('#handoff-seat');if(!el)return;if(!seat){el.textContent='이 브라우저는 참가한 자리가 없습니다 · 관전만 가능';el.style.color='#c4762f';return;}if(seat.where==='bench'){el.textContent=`${seat.name} · 대기석`;el.style.color='#c4762f';return;}const [seatTeam,seatIndex]=seat.where.split('-');el.textContent=`내 자리: ${state.teams[seatTeam].name} ${Number(seatIndex)+1}번 (${seat.name})`;el.style.color='';})();$('#handoff-copy').innerHTML=(mine?'대기 중인 팀원은 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.':'지금은 두 사람이 1대1로 진행 중입니다.<br />내 차례가 오면 이 화면에서 게임판이 열립니다.')+(state.round>1?`<br /><b>라운드 ${state.round} · 양 팀 제한 시간이 1분씩 리셋되었습니다.</b>`:'');$('#enter-turn').disabled=!mine;$('#enter-turn').textContent=mine?'내 턴 시작 →':'다른 플레이어 진행 중';showScreen('handoff-screen');}
 function enterTurn(){
   clearInterval(spectatorTimer); $('#game-screen').classList.remove('watching');
   if(!isMyTurn()||state.gameOver||state.timeoutActive)return;
@@ -341,7 +366,7 @@ function renderWinner(){
 async function beginSetup(){
   if(network.roomCode&&!network.isHost)return;
   if(!network.roomCode&&!(await createRoom()))return;
-  if(!state.roomLobby){state.roomLobby={started:false,claims:Object.fromEntries(lobbySlots().map((slot)=>[slot.key,null]))};publishGame();showRoomLobby();return;}
+  if(!state.roomLobby){state.roomLobby={started:false,bench:[],claims:Object.fromEntries(lobbySlots().map((slot)=>[slot.key,null]))};publishGame();showRoomLobby();return;}
   if(!state.roomLobby.started){if(!allSeatsFilled()){renderRoomLobby();return;}state.roomLobby.started=true;closeModal($('#room-lobby-modal'));}
   generateNewBoard();state.placement={phase:1,opponentSlots:[],ownSlot:[]};state.cars=[];state.gameOver=false;state.winner=null;state.winReason=null;state.timeoutActive=null;state.completedOrder=[];state.round=1;state.lastMoved=null;state.selected=null;closeModal($('#winner-modal'));showScreen('setup-screen');renderSetupBoard();publishGame();
 }
@@ -349,7 +374,7 @@ async function beginSetup(){
 $('#open-setup').addEventListener('click',()=>openModal('settings-modal'));$$('[data-open-modal]').forEach((button)=>button.addEventListener('click',()=>openModal(button.dataset.openModal)));$$('.modal-close,[data-close-modal]').forEach((button)=>button.addEventListener('click',()=>closeModal(button)));$$('.modal-backdrop').forEach((modal)=>modal.addEventListener('click',(event)=>{if(event.target===modal&&!['winner-modal','timeout-modal'].includes(modal.id))modal.classList.remove('open');}));
 $$('[data-size]').forEach((button)=>button.addEventListener('click',()=>{state.size=Number(button.dataset.size);$$('.size-switch button').forEach((b)=>b.classList.toggle('selected',b===button));syncPlayerSlots();renderNameFields();}));
 $('#save-settings').addEventListener('click',()=>{['red','yellow'].forEach((team)=>{state.teams[team].name=$(`#${team}-name-input`).value.trim()||(team==='red'?'레드 팀':'옐로 팀');state.teams[team].players=Array.from({length:state.size},(_,i)=>defaultName(team,i));});renderLobby();closeModal($('#settings-modal'));publishGame();});
-$('#create-room').addEventListener('click',createRoom);$('#join-room').addEventListener('click',joinRoom);$('#start-online-game').addEventListener('click',beginSetup);$('#leave-room').addEventListener('click',()=>{clearInterval(network.polling);network.roomCode=null;network.isHost=false;state.roomLobby=null;closeModal($('#room-lobby-modal'));setRoomStatus('로컬 게임');history.replaceState(null,'',location.pathname);});
+$('#create-room').addEventListener('click',createRoom);$('#join-room').addEventListener('click',joinRoom);$('#start-online-game').addEventListener('click',beginSetup);$('#go-bench').addEventListener('click',()=>claimSeat('bench'));$('#leave-room').addEventListener('click',()=>{clearInterval(network.polling);network.roomCode=null;network.isHost=false;state.roomLobby=null;closeModal($('#room-lobby-modal'));setRoomStatus('로컬 게임');history.replaceState(null,'',location.pathname);});
 $('#begin-placement').addEventListener('click',beginSetup);$('#cancel-setup').addEventListener('click',()=>showScreen('lobby-screen'));$('#placement-next').addEventListener('click',()=>{if(!canPlaceNow())return;if(state.placement.phase===1){state.placement.phase=2;renderSetupBoard();}else{setupCars();showHandoff();}publishGame();});
 $('#enter-turn').addEventListener('click',enterTurn);$('#handoff-lobby').addEventListener('click',()=>{clearInterval(state.timer);showScreen('lobby-screen');});$('#leave-game').addEventListener('click',()=>{clearInterval(state.timer);showScreen('lobby-screen');});
 $$('[data-direction]').forEach((button)=>button.addEventListener('click',()=>{const car=state.cars.find((item)=>item.id===state.selected);if(!car){$('#move-notice').textContent='먼저 움직일 자동차를 선택하세요.';return;}slideCar(car,button.dataset.direction);}));

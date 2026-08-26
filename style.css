@@ -180,3 +180,18 @@ body{font-family:"IBM Plex Sans KR","Noto Sans KR",sans-serif}
 .mu b{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mu em{font-style:normal;font:9px "DM Mono",monospace;color:#9b8f8c;white-space:nowrap}
 .mu-vs{font:10px "DM Mono",monospace;color:#7d7371;flex:0 0 auto}
+
+/* 배치 화면 중립차 미리보기 */
+.setup-board .tile.preview{pointer-events:none;opacity:.72}
+.cell-marker{z-index:4}
+
+/* 대기석 */
+.bench-block{margin:14px 0 0;padding:12px;border:1px solid var(--line);background:#120d0f;text-align:left}
+.bench-block>small{display:block;margin-bottom:8px;font:9px "DM Mono",monospace;letter-spacing:.12em;color:#9b8f8c}
+.bench-list{display:flex;flex-wrap:wrap;gap:6px;min-height:26px;margin-bottom:10px}
+.bench-chip{padding:5px 10px;border:1px solid #45272b;background:#1b1214;color:#ded5d1;font-size:11px}
+.bench-chip.mine{border-color:var(--red);color:#fff}
+.bench-empty{color:#7d7371;font-size:11px;align-self:center}
+.bench-block .line-button{width:100%;padding:8px;font-size:11px}
+.bench-block .line-button:disabled{opacity:.4;cursor:not-allowed}
+.handoff-seat{margin:11px 0 0;font:10px "DM Mono",monospace;letter-spacing:.05em;color:#8d8280}

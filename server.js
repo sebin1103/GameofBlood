@@ -36,12 +36,23 @@ http.createServer(async (request, response) => {
     if (!room?.state?.state?.roomLobby) return json(response, 404, { error:'대기실을 찾을 수 없습니다.' });
     try {
       const payload = await readBody(request);
-      const claims = room.state.state.roomLobby.claims;
-      const current = claims[payload.slot];
-      if (current && current.clientId !== payload.clientId) return json(response, 409, { error:'이미 다른 플레이어가 참가한 자리입니다.' });
-      const alreadySeated = Object.entries(claims).find(([slot, claim]) => slot !== payload.slot && claim?.clientId === payload.clientId);
-      if (alreadySeated) return json(response, 409, { error:'이미 다른 플레이어 좌석으로 참가했습니다.' });
-      claims[payload.slot] = { clientId:payload.clientId, name:payload.name };
+      const lobby = room.state.state.roomLobby;
+      const claims = lobby.claims;
+      if (!Array.isArray(lobby.bench)) lobby.bench = [];
+      const leaveEverything = () => {
+        for (const key of Object.keys(claims)) if (claims[key]?.clientId === payload.clientId) claims[key] = null;
+        lobby.bench = lobby.bench.filter((person) => person.clientId !== payload.clientId);
+      };
+      if (payload.slot === 'bench') {
+        leaveEverything();
+        lobby.bench.push({ clientId:payload.clientId, name:payload.name });
+      } else {
+        if (!Object.prototype.hasOwnProperty.call(claims, payload.slot)) return json(response, 400, { error:'없는 자리입니다.' });
+        const current = claims[payload.slot];
+        if (current && current.clientId !== payload.clientId) return json(response, 409, { error:'이미 다른 플레이어가 참가한 자리입니다.' });
+        leaveEverything();
+        claims[payload.slot] = { clientId:payload.clientId, name:payload.name };
+      }
       room.updatedAt = Date.now();
       return json(response, 200, { state:room.state, updatedAt:room.updatedAt });
     } catch { return json(response, 400, { error:'잘못된 참가 요청입니다.' }); }
