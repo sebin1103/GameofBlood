@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#121212" />
+  <title>지옥의 출근길 | 팀 대전</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=DM+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="marble-bg"></div>
+  <main id="app">
+    <section id="lobby-screen" class="screen lobby-screen active">
+      <header class="lobby-header"><div class="brand"><span>TEAM SLIDING PUZZLE</span><strong>HELL COMMUTE</strong></div><button class="plain-button" data-open-modal="guide-modal">게임 방법 <span>↗</span></button></header>
+      <div class="lobby-main"><p class="eyebrow"><i></i> 14 × 14 TEAM ESCAPE GAME</p><h1>지옥의<br /><em>출근길</em></h1><p class="intro">당신의 자동차는 멈출 수 없다.<br />팀의 길을 만들고, 가장 먼저 탈출하세요.</p>
+        <section class="setting-card"><div class="setting-top"><div><small>GAME SETUP</small><h2 id="match-label">2 : 2 팀전</h2></div><button id="open-setup" class="line-button">팀 구성 · 이름 설정 <b>›</b></button></div>
+          <div class="team-overview"><div class="overview-team red"><i></i><div><small>RED TEAM / 선공</small><strong id="lobby-red-name">레드 팀</strong></div><b id="red-count">2명</b></div><span>VS</span><div class="overview-team yellow"><i></i><div><small>YELLOW TEAM / 후공</small><strong id="lobby-yellow-name">옐로 팀</strong></div><b id="yellow-count">2명</b></div></div>
+          <div class="room-controls"><div class="room-code"><small>온라인 방</small><strong id="room-status">로컬 게임</strong></div><button id="create-room" class="line-button">방 만들기</button><input id="join-room-code" maxlength="5" placeholder="방 코드" aria-label="방 코드" /><button id="join-room" class="line-button">참가</button></div>
+          <div class="identity-controls"><span>내 조작 권한</span><select id="my-team"><option value="red">레드 팀</option><option value="yellow">옐로 팀</option></select><select id="my-player"><option value="0">1번</option><option value="1">2번</option><option value="2">3번</option></select></div>
+          <button id="begin-placement" class="primary-button">게임 준비 시작 <span>→</span></button></section>
+      </div><footer class="lobby-footer"><span>MOVE · BLOCK · ESCAPE</span><span>3 CARS TO WIN</span></footer>
+    </section>
+
+    <section id="setup-screen" class="screen setup-screen">
+      <header class="game-header"><button id="cancel-setup" class="round-button" aria-label="로비로 돌아가기">←</button><div class="header-title"><small>GAME SETUP</small><strong>자동차 시작 위치 배치</strong></div><span class="step-count" id="setup-step-count">STEP 1 / 2</span></header>
+      <div class="setup-layout"><aside class="setup-instruction"><span id="setup-tag">후공 팀</span><h2 id="setup-title">상대 팀의<br />자동차 3대를<br /><em>배치하세요.</em></h2><p id="setup-copy">중앙의 8개 시작 위치 중 레드 팀 자동차가 놓일 세 곳을 선택합니다.</p><div class="placement-count"><span id="placement-number">0</span><small>/ 3 선택</small></div><div class="placement-key"><p><i class="red-key"></i> 레드 팀 자동차</p><p><i class="yellow-key"></i> 옐로 팀 자동차</p></div></aside><section class="setup-board-wrap"><div id="setup-board" class="setup-board" aria-label="시작 위치 배치판"></div><p class="board-caption">선택한 시작 위치는 이후 변경할 수 없습니다.</p></section></div>
+      <footer class="setup-footer"><button id="placement-next" class="primary-button" disabled>다음 단계 <span>→</span></button></footer>
+    </section>
+
+    <section id="handoff-screen" class="screen handoff-screen"><div class="privacy-card"><div class="privacy-icon"><span>⌁</span></div><p class="eyebrow"><i></i> PRIVATE TURN</p><h2><span id="handoff-team">레드 팀</span><br /><em id="handoff-player">플레이어 1</em>만<br />화면을 보세요.</h2><p id="handoff-copy">다른 플레이어는 화면을 보거나 소통할 수 없습니다.<br />준비되면 혼자서 시작하세요.</p><div class="private-meta"><span>남은 개인 시간</span><b id="handoff-time">01:00</b></div><button id="enter-turn" class="primary-button">내 턴 시작 <span>→</span></button><button id="handoff-lobby" class="plain-button">게임 종료하고 로비로</button></div></section>
+
+    <section id="game-screen" class="screen game-screen">
+      <header class="game-header"><div class="header-title"><small>HELL COMMUTE · LIVE MATCH</small><strong>지옥의 출근길</strong></div><div class="active-turn-badge" id="active-turn-badge"><i></i><span id="active-team-name">레드 팀</span><b id="active-player-name">레드 1</b></div><button class="round-button" data-open-modal="guide-modal" aria-label="게임 방법">?</button></header>
+      <div class="match-layout"><aside class="team-status red-status"><div class="status-heading"><i></i><div><small>RED TEAM / 선공</small><strong id="red-team-title">레드 팀</strong></div></div><div class="escape-progress"><span>ESCAPED</span><div id="red-escaped" class="escape-dots"></div><b id="red-score">0 / 3</b></div><div id="red-roster" class="roster"></div><button id="red-timeout" class="timeout-button">타임아웃 <span id="red-timeout-state">1 / 1</span></button></aside>
+        <section class="board-column"><div class="timer-bar"><div><small>개인 제한 시간</small><strong id="player-clock">01:00</strong></div><div class="timer-track"><i id="timer-fill"></i></div><span id="move-notice">자동차를 선택하고 방향을 고르세요.</span></div><div class="board-frame"><div id="game-board" class="game-board" aria-label="14 곱하기 14 게임판"></div></div><div class="controls"><p id="selected-car-text">움직일 자동차를 선택하세요</p><div class="direction-pad"><button data-direction="up" aria-label="위로 이동">↑</button><button data-direction="left" aria-label="왼쪽으로 이동">←</button><button data-direction="down" aria-label="아래로 이동">↓</button><button data-direction="right" aria-label="오른쪽으로 이동">→</button></div></div></section>
+        <aside class="team-status yellow-status"><div class="status-heading"><i></i><div><small>YELLOW TEAM / 후공</small><strong id="yellow-team-title">옐로 팀</strong></div></div><div class="escape-progress"><span>ESCAPED</span><div id="yellow-escaped" class="escape-dots"></div><b id="yellow-score">0 / 3</b></div><div id="yellow-roster" class="roster"></div><button id="yellow-timeout" class="timeout-button">타임아웃 <span id="yellow-timeout-state">1 / 1</span></button></aside></div>
+      <footer class="game-footer"><span id="last-move">직전 이동 차량: 없음</span><span>내 팀 자동차 · 중립 자동차만 이동 가능</span><button id="leave-game" class="plain-button">로비로</button></footer>
+    </section>
+  </main>
+
+  <div id="settings-modal" class="modal-backdrop" aria-hidden="true"><section class="modal settings-modal" role="dialog" aria-modal="true"><button class="modal-close" data-close-modal>×</button><p class="eyebrow"><i></i> PLAYER SETUP</p><h2>팀을 구성하세요</h2><div class="size-switch"><button class="selected" data-size="2">2 : 2</button><button data-size="3">3 : 3</button></div><div class="form-grid"><div class="form-team red-form"><label>RED TEAM · 선공</label><input id="red-name-input" value="레드 팀" maxlength="12" /><div id="red-name-fields" class="name-fields"></div></div><div class="form-team yellow-form"><label>YELLOW TEAM · 후공</label><input id="yellow-name-input" value="옐로 팀" maxlength="12" /><div id="yellow-name-fields" class="name-fields"></div></div></div><button id="save-settings" class="primary-button">설정 완료 <span>✓</span></button></section></div>
+  <div id="guide-modal" class="modal-backdrop" aria-hidden="true"><section class="modal guide-modal" role="dialog" aria-modal="true"><button class="modal-close" data-close-modal>×</button><p class="eyebrow"><i></i> HOW TO PLAY</p><h2>게임 방법</h2><ol><li><b>01</b><div><strong>시작 위치 배치</strong><span>후공 팀이 선공 팀 차량 3대의 위치를 고르고, 선공 팀이 마지막 한 곳을 선택합니다.</span></div></li><li><b>02</b><div><strong>직선으로 끝까지</strong><span>자동차는 구조물이나 다른 자동차에 막힐 때까지 한 방향으로 이동합니다.</span></div></li><li><b>03</b><div><strong>선택 제한</strong><span>내 팀 또는 중립 자동차만 움직일 수 있으며, 직전에 이동한 자동차는 움직일 수 없습니다.</span></div></li><li><b>04</b><div><strong>개인 시간 1분</strong><span>자신의 차례에만 시간이 흐릅니다. 시간이 끝나면 다음 순번의 팀원에게 교대합니다.</span></div></li><li><b>05</b><div><strong>3대 먼저 탈출</strong><span>자기 팀 자동차 4대 중 3대를 가장자리로 탈출시키면 승리합니다.</span></div></li></ol><button class="line-button full" data-close-modal>알겠습니다</button></section></div>
+  <div id="timeout-modal" class="modal-backdrop" aria-hidden="true"><section class="modal timeout-modal" role="dialog" aria-modal="true"><p class="eyebrow"><i></i> TEAM TIMEOUT</p><h2><span id="timeout-team-name">레드 팀</span> 작전 회의</h2><p>지금은 모든 팀원이 게임판을 보고 자유롭게 소통할 수 있습니다.</p><div id="timeout-board" class="timeout-board"></div><button id="end-timeout" class="primary-button">작전 회의 종료 <span>→</span></button></section></div>
+  <div id="winner-modal" class="modal-backdrop" aria-hidden="true"><section class="modal winner-modal" role="dialog" aria-modal="true"><p class="eyebrow"><i></i> ESCAPE COMPLETE</p><h2><span id="winner-name">레드 팀</span><br />승리!</h2><p id="winner-copy">세 대의 자동차가 지옥의 출근길을 탈출했습니다.</p><div class="winner-stat"><small>TOTAL MOVES</small><strong id="winner-moves">00</strong></div><button id="new-game" class="primary-button">새 게임 준비 <span>↻</span></button><button id="winner-lobby" class="plain-button">로비로 돌아가기</button></section></div>
+  <script src="./app.js"></script>
+</body>
+</html>
